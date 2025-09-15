@@ -1,0 +1,158 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Conway's Game of Life — Single File</title>
+  <style>
+    :root { --bg:#0b0f14; --panel:#121820; --text:#e7f0ff; --accent:#39ff14; --muted:#5a6b7f; }
+    * { box-sizing:border-box; font-family: ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, Arial; }
+    html,body { height:100%; margin:0; background:var(--bg); color:var(--text); }
+    .wrap { max-width:980px; margin:20px auto; padding:0 12px; }
+    h1 { font-size:1.3rem; margin:0 0 10px; font-weight:700; }
+    .panel { background:var(--panel); border:1px solid #1e2936; border-radius:14px; padding:12px; box-shadow:0 10px 25px rgba(0,0,0,.25); }
+    .controls { display:flex; flex-wrap:wrap; gap:10px; align-items:center; margin-bottom:10px; }
+    button, select, input[type="range"] { background:#0e141c; color:var(--text); border:1px solid #223044; border-radius:10px; padding:8px 12px; }
+    button:hover { border-color:#2f4664; cursor:pointer; }
+    .badge { padding:6px 10px; border-radius:999px; background:#0e141c; border:1px solid #223044; color: var(--muted); }
+    canvas { display:block; width:100%; height:auto; background:#000; border-radius:12px; }
+    .footer { color: var(--muted); font-size:.9rem; margin-top:10px; }
+    .accent { color: var(--accent); }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <h1>Conway's <span class="accent">Game of Life</span> — Single File</h1>
+    <div class="panel">
+      <div class="controls">
+        <button id="playPause">Pause</button>
+        <button id="stepOne">Step</button>
+        <button id="clear">Clear</button>
+        <button id="randomize">Randomize</button>
+        <label class="badge">Speed <input id="speed" type="range" min="1" max="60" value="12"></label>
+        <label class="badge">Cell Size <input id="cellSize" type="range" min="4" max="16" value="8"></label>
+        <label class="badge">
+          Seed
+          <select id="seed">
+            <option value="random">Random</option>
+            <option value="glider">Glider</option>
+            <option value="blinker">Blinker</option>
+            <option value="toad">Toad</option>
+            <option value="beacon">Beacon</option>
+          </select>
+        </label>
+        <span class="badge" id="stats">Gen: 0 • Alive: 0</span>
+      </div>
+      <canvas id="life"></canvas>
+      <div class="footer">Click/drag to draw. Embed this file directly in Google Sites via the <em>Embed → By URL</em> option after you host it.</div>
+    </div>
+  </div>
+<script>
+const canvas = document.getElementById("life");
+const ctx = canvas.getContext("2d");
+let playing = true;
+let gen = 0;
+let aliveCount = 0;
+let rows = 60, cols = 80;
+let cell = 8;
+let fps = 12;
+
+function resizeCanvas(){ canvas.width = cols * cell; canvas.height = rows * cell; }
+resizeCanvas();
+
+const makeBoard = (r,c,f=0)=>Array.from({length:r},()=>Array.from({length:c},()=>f));
+let board = makeBoard(rows, cols, 0);
+
+function draw(){
+  ctx.fillStyle = "#000"; ctx.fillRect(0,0,canvas.width,canvas.height);
+  aliveCount = 0;
+  for(let r=0;r<rows;r++){
+    for(let c=0;c<cols;c++){
+      if(board[r][c]){ aliveCount++; ctx.fillStyle="#39ff14"; ctx.fillRect(c*cell, r*cell, cell, cell); }
+    }
+  }
+  document.getElementById("stats").textContent = `Gen: ${gen} • Alive: ${aliveCount}`;
+}
+
+function neighbors(r,c){
+  let t=0;
+  for(let dr=-1;dr<=1;dr++){
+    for(let dc=-1;dc<=1;dc++){
+      if(dr===0 && dc===0) continue;
+      let rr=(r+dr+rows)%rows, cc=(c+dc+cols)%cols;
+      t += board[rr][cc];
+    }
+  }
+  return t;
+}
+
+function stepSim(){
+  let next = makeBoard(rows, cols, 0);
+  for(let r=0;r<rows;r++){
+    for(let c=0;c<cols;c++){
+      const n = neighbors(r,c);
+      next[r][c] = (board[r][c] && (n===2 || n===3)) || (!board[r][c] && n===3) ? 1 : 0;
+    }
+  }
+  board = next; gen++;
+}
+
+let last=0;
+function loop(ts){
+  if(!playing){ draw(); requestAnimationFrame(loop); return; }
+  const interval = 1000/fps;
+  if(ts-last >= interval){ stepSim(); draw(); last=ts; }
+  requestAnimationFrame(loop);
+}
+
+// UI wiring
+const playPause = document.getElementById("playPause");
+playPause.onclick = ()=>{ playing=!playing; playPause.textContent = playing ? "Pause" : "Play"; };
+document.getElementById("stepOne").onclick = ()=>{ if(!playing){ stepSim(); draw(); } };
+document.getElementById("clear").onclick = ()=>{ board = makeBoard(rows, cols, 0); gen=0; draw(); };
+document.getElementById("randomize").onclick = ()=>{
+  gen=0; board = makeBoard(rows, cols, 0);
+  for(let r=0;r<rows;r++) for(let c=0;c<cols;c++) if(Math.random()<0.15) board[r][c]=1;
+  draw();
+};
+document.getElementById("speed").oninput = e=>{ fps = +e.target.value; };
+document.getElementById("cellSize").oninput = e=>{ cell = +e.target.value; resizeCanvas(); draw(); };
+
+function place(p, top, left){ for(let r=0;r<p.length;r++) for(let c=0;c<p[0].length;c++) board[top+r][left+c]=p[r][c]; }
+function glider(){ return [[0,1,0],[0,0,1],[1,1,1]]; }
+function blinker(){ return [[1,1,1]]; }
+function toad(){ return [[0,1,1,1],[1,1,1,0]]; }
+function beacon(){ return [[1,1,0,0],[1,1,0,0],[0,0,1,1],[0,0,1,1]]; }
+
+function applySeed(name){
+  board = makeBoard(rows, cols, 0);
+  const mr=Math.floor(rows/2), mc=Math.floor(cols/2);
+  if(name==="random"){ for(let r=0;r<rows;r++) for(let c=0;c<cols;c++) if(Math.random()<0.15) board[r][c]=1; }
+  if(name==="glider") place(glider(), mr-2, mc-2);
+  if(name==="blinker") place(blinker(), mr, mc-1);
+  if(name==="toad") place(toad(), mr-1, mc-2);
+  if(name==="beacon") place(beacon(), mr-2, mc-2);
+  gen=0; draw();
+}
+
+document.getElementById("seed").onchange = e=> applySeed(e.target.value);
+applySeed("random"); draw(); requestAnimationFrame(loop);
+
+// Drawing with touch
+let drawing=false;
+canvas.addEventListener("pointerdown", e=>{ drawing=true; toggleAtEvent(e); });
+canvas.addEventListener("pointermove", e=>{ if(drawing) toggleAtEvent(e,true); });
+window.addEventListener("pointerup", ()=> drawing=false);
+
+function toggleAtEvent(e,setOn=null){
+  const rect = canvas.getBoundingClientRect();
+  const x = e.clientX - rect.left, y = e.clientY - rect.top;
+  const cc = Math.floor(x/cell), rr = Math.floor(y/cell);
+  if(rr>=0 && rr<rows && cc>=0 && cc<cols){
+    if(setOn===true) board[rr][cc]=1; else board[rr][cc] = board[rr][cc]?0:1;
+    draw();
+  }
+}
+</script>
+</body>
+</html>
